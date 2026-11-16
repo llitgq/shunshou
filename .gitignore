@@ -1,0 +1,22 @@
+# 构建产物
+.build/
+dist/
+build/
+
+# 本地工作区（不开源：交接/存档/实验/调研/官网/打包脚本产物）
+存档/
+打包/
+实验留档/
+工具/
+官网/
+交接-*.md
+调研-*.md
+.tmp/
+.DS_Store
+
+# sherpa-onnx 静态库：libonnxruntime.a 单文件 75MB 超 GitHub 单文件限制，
+# 不入库；clone 后从 sherpa-onnx 官方 release v2.0.1 拉取解到 Vendor/sherpa-onnx/
+Vendor/sherpa-onnx/
+
+# 根目录杂图
+/*.png
