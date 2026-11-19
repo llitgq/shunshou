@@ -22,6 +22,7 @@ struct DockedEntry: Identifiable, Equatable {
     let id: CGWindowID            // 系统稳定窗口标识（AXUIElement 每次枚举都是新实例，不能当 id）
     let win: AXUIElement
     let app: String
+    let pid: Int32                // 收起指示器取 app 图标用
     var side: DockSide
     var state: DockState
 }
@@ -30,9 +31,11 @@ struct DockedEntry: Identifiable, Equatable {
 final class Engine: ObservableObject {
 
     // 参数
-    static let handleW: CGFloat = 10
+    static let handleW: CGFloat = 24   // 收起后留在屏内的把手宽度；收起指示器图标嵌在其中
     static let hotZone: CGFloat = 4
-    static let snapDist: CGFloat = 25
+    // 贴边判定带：必须真正进到把手条以内。若沿用大容差（≥handleW），把窗口贴到
+    // 别人把手上（距屏缘=handleW）会被误判贴屏 → 误吸附 → 新把手同位盖住老把手
+    static var snapDist: CGFloat { handleW - 4 }
     static let hideDelay: TimeInterval = 1.5
     static let animDur: TimeInterval = 0.30
 
@@ -60,6 +63,7 @@ final class Engine: ObservableObject {
         let cgId: CGWindowID      // 稳定标识：CGWindowList 的 kCGWindowNumber
         let win: AXUIElement
         let app: String
+        let pid: Int32
         let frame: CGRect
     }
 
@@ -114,7 +118,7 @@ final class Engine: ObservableObject {
                 if let wf = axFrame(w), wf.width > 50, wf.height > 50,
                    abs(wf.midX - fr.midX) < 3, abs(wf.midY - fr.midY) < 3 {
                     usedAx.insert(axKey)
-                    out.append(VisibleWin(cgId: cgId, win: w, app: name, frame: wf))
+                    out.append(VisibleWin(cgId: cgId, win: w, app: name, pid: pid, frame: wf))
                 }
             }
         }
@@ -149,6 +153,7 @@ final class Engine: ObservableObject {
         pollTimer?.invalidate(); pollTimer = nil
         hideTimers.values.forEach { $0.invalidate() }; hideTimers = [:]
         docked = []
+        LogoHub.shared.removeAll()
         running = false
         NSLog("[shunshou] 已退出：窗口已召回、监听已停")
     }
@@ -189,7 +194,8 @@ final class Engine: ObservableObject {
                 } else {
                     cancelTimers(key)
                     docked.removeAll { $0.id == key }
-                    NSLog("[shunshou] %@ 被拖离边缘，自动解除停靠", v.app)
+                    LogoHub.shared.remove(key)
+                    NSLog("[shunshou] %@ 被拖离边缘，自动解除收纳", v.app)
                 }
                 continue
             }
@@ -224,7 +230,7 @@ final class Engine: ObservableObject {
         guard !docked.contains(where: { $0.id == key }) else { return }
         let screen = screenContaining(v.frame)
         let target = CGPoint(x: outX(for: side, frame: v.frame, screen: screen), y: v.frame.origin.y)
-        docked.append(DockedEntry(id: key, win: v.win, app: v.app, side: side, state: .animating))
+        docked.append(DockedEntry(id: key, win: v.win, app: v.app, pid: v.pid, side: side, state: .animating))
         animate(key, v.win, from: v.frame.origin, to: target) { [weak self] in
             self?.setState(key, .out)
         }
@@ -239,6 +245,7 @@ final class Engine: ObservableObject {
         guard let e = docked.first(where: { $0.id == key }) else { return }
         cancelTimers(key)
         docked.removeAll { $0.id == key }
+        LogoHub.shared.remove(key)
         if let fr = Engine.axFrame(e.win) {
             let screen = screenContaining(fr)
             let target = CGPoint(x: inX(for: e.side, frame: fr, screen: screen), y: fr.origin.y)
@@ -273,7 +280,25 @@ final class Engine: ObservableObject {
     }
 
     private func setState(_ key: CGWindowID, _ s: DockState) {
-        if let i = docked.firstIndex(where: { $0.id == key }) { docked[i].state = s }
+        if let i = docked.firstIndex(where: { $0.id == key }) {
+            docked[i].state = s
+            syncLogo(docked[i])
+        }
+    }
+
+    /// 收起指示器随状态同步：.out 挂上 app 图标，其余状态隐藏
+    private func syncLogo(_ e: DockedEntry) {
+        switch e.state {
+        case .out:
+            guard let fr = Engine.axFrame(e.win) else { return }
+            LogoHub.shared.show(e.id,
+                                icon: NSRunningApplication(processIdentifier: e.pid)?.icon,
+                                side: e.side,
+                                winFrameCG: fr,
+                                screen: screenContaining(fr))
+        default:
+            LogoHub.shared.hide(e.id)
+        }
     }
 
     private func cancelTimers(_ key: CGWindowID) {
@@ -332,6 +357,7 @@ final class Engine: ObservableObject {
         for e in docked {
             guard let fr = Engine.axFrame(e.win) else {
                 docked.removeAll { $0.id == e.id }
+                LogoHub.shared.remove(e.id)
                 continue
             }
             let screen = screenContaining(fr)

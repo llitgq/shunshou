@@ -14,7 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.button?.title = "🖖"
-        item.button?.toolTip = "顺手 Shunshou · 贴边收纳"
+        item.button?.toolTip = "顺手 Handy · 贴边收纳"
         statusItem = item
 
         let pop = NSPopover()

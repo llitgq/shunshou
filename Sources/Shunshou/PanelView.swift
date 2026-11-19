@@ -49,7 +49,10 @@ struct PanelView: View {
         HStack(spacing: 9) {
             Text("🖖").font(.system(size: 15))
             VStack(alignment: .leading, spacing: 1) {
-                Text("顺手").font(.system(size: 13, weight: .semibold))
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Text("顺手").font(.system(size: 13, weight: .semibold))
+                    Text("Handy").font(.system(size: 11)).foregroundStyle(.secondary)
+                }
                 Text(snapshot?.enabled == true ? "窗口工具 · 一个开关的事" : "已停用")
                     .font(.system(size: 11)).foregroundStyle(.secondary)
             }
