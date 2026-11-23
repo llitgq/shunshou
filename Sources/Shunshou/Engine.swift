@@ -85,6 +85,17 @@ final class Engine: ObservableObject {
         }
     }
 
+    /// 触发弹出的窗口一律最高层级：AX 通道置顶组合拳（Rectangle/Hammerspoon 生态验证过的做法）。
+    /// ① kAXFrontmost（app 元素）= app 组整体置顶——走 AX 权限，不受"后台进程求激活"的静默拒绝
+    /// ② kAXMain（窗口）= 组内该窗口排头（解决多窗口 app 激活后被自家兄弟窗口挡住，如 Safari 双窗）
+    /// ③ NSRunningApplication.activate 三保险（部分 app 只认这条）
+    nonisolated static func bringToFront(_ pid: Int32, _ win: AXUIElement) {
+        let appElement = AXUIElementCreateApplication(pid)
+        AXUIElementSetAttributeValue(appElement, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+        AXUIElementSetAttributeValue(win, kAXMainAttribute as CFString, kCFBooleanTrue)
+        NSRunningApplication(processIdentifier: pid)?.activate(options: [])
+    }
+
     /// 屏幕上可见、非最小化的常规 app 窗口
     nonisolated static func visibleWindows() -> [VisibleWin] {
         let screenBounds = NSScreen.screens.map { $0.frame }.reduce(CGRect.null) { $0.union($1) }
@@ -246,6 +257,8 @@ final class Engine: ObservableObject {
         cancelTimers(key)
         docked.removeAll { $0.id == key }
         LogoHub.shared.remove(key)
+        // 召回同样最高层级（用户定准则：触发弹出来的一律置顶展示）
+        Engine.bringToFront(e.pid, e.win)
         if let fr = Engine.axFrame(e.win) {
             let screen = screenContaining(fr)
             let target = CGPoint(x: inX(for: e.side, frame: fr, screen: screen), y: fr.origin.y)
@@ -257,6 +270,8 @@ final class Engine: ObservableObject {
         guard let e = docked.first(where: { $0.id == key }), e.state == .out,
               animTimers[key] == nil, let fr = Engine.axFrame(e.win) else { return }
         cancelHide(key)
+        // 滑入即最高层级（kAXRaiseAction 只能组内提层、activate 会被激活保护静默拒，均不可靠——bringToFront 注释）
+        Engine.bringToFront(e.pid, e.win)
         setState(key, .slideIn)
         let screen = screenContaining(fr)
         let target = CGPoint(x: inX(for: e.side, frame: fr, screen: screen), y: fr.origin.y)
